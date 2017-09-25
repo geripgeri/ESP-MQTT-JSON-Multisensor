@@ -32,7 +32,6 @@
 #include <ArduinoJson.h>
 
 
-
 /************ WIFI and MQTT INFORMATION (CHANGE THESE FOR YOUR SETUP) ******************/
 #define wifi_ssid "YourSSID" //type your WIFI information inside the quotes
 #define wifi_password "YourWIFIpassword"
@@ -56,7 +55,9 @@ int OTAport = 8266;
 #define MQTT_MAX_PACKET_SIZE 512
 const int BUFFER_SIZE = 300;
 bool previousDoorState = true;
-
+unsigned long previousMillis = 0;
+unsigned long interval = 500; // Half second
+boolean isStateChanged = false;
 
 WiFiClient espClient;
 PubSubClient client(espClient);
@@ -142,11 +143,20 @@ void sendState() {
   root["door"] = digitalRead(REED_PIN) == LOW ? true : false;
   char buffer[root.measureLength() + 1];
   root.printTo(buffer, sizeof(buffer));
-  if( previousDoorState != root["door"]) {
-    Serial.println("Publishing");
-    Serial.println(buffer);
-    client.publish(door_topic, buffer, true);
+  if(previousDoorState != root["door"] && !isStateChanged) {
+    // Reset timer
     previousDoorState = root["door"];
+    previousMillis = millis();
+    isStateChanged = true;
+  }
+  // Only publish message whet the door is open minimum 0.5 sec
+  if(isStateChanged && millis() - previousMillis > interval){ 
+    if(root["door"] == previousDoorState) {
+        Serial.println("Publishing");
+        Serial.println(buffer);
+        client.publish(door_topic, buffer, true);
+      }
+    isStateChanged = false;
   }
 }
 
