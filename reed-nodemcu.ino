@@ -50,11 +50,13 @@ int OTAport = 8266;
 
 /**************************** PIN DEFINITIONS ********************************************/
 #define REED_PIN D0
+#define LOCK_PIN D6
 
 /**************************** SENSOR DEFINITIONS *******************************************/
 #define MQTT_MAX_PACKET_SIZE 512
 const int BUFFER_SIZE = 300;
 bool previousDoorState = true;
+bool previousLockState = true;
 unsigned long previousMillis = 0;
 unsigned long interval = 500; // Half second
 boolean isStateChanged = false;
@@ -65,6 +67,7 @@ PubSubClient client(espClient);
 /********************************** START SETUP*****************************************/
 void setup() {
   pinMode(REED_PIN, INPUT);
+  pinMode(LOCK_PIN, INPUT);
 
   Serial.begin(115200);
   delay(10);
@@ -140,18 +143,20 @@ void setup_wifi() {
 void sendState() {
   StaticJsonBuffer<BUFFER_SIZE> jsonBuffer;
   JsonObject& root = jsonBuffer.createObject();
-  root["door"] = digitalRead(REED_PIN) == LOW ? true : false;
+  root["open"] = digitalRead(REED_PIN) == LOW ? true : false;
+  root["locked"] = digitalRead(LOCK_PIN) == HIGH ? true : false;
   char buffer[root.measureLength() + 1];
   root.printTo(buffer, sizeof(buffer));
-  if(previousDoorState != root["door"] && !isStateChanged) {
+  if((previousDoorState != root["open"] || previousLockState != root["locked"] ) && !isStateChanged) {
     // Reset timer
-    previousDoorState = root["door"];
+    previousDoorState = root["open"];
+    previousLockState = root["locked"];
     previousMillis = millis();
     isStateChanged = true;
   }
   // Only publish message whet the door is open minimum 0.5 sec
   if(isStateChanged && millis() - previousMillis > interval){ 
-    if(root["door"] == previousDoorState) {
+    if(root["open"] == previousDoorState || root["locked"] == previousLockState) {
         Serial.println("Publishing");
         Serial.println(buffer);
         client.publish(door_topic, buffer, true);
@@ -201,7 +206,7 @@ void loop() {
 /****reset***/
 void software_Reset() // Restarts program from beginning but does not reset the peripherals and registers
 {
-Serial.print("resetting");
+Serial.print("MQTT connection lost, resetting");
 ESP.reset(); 
 }
 
